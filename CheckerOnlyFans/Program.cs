@@ -279,48 +279,49 @@ namespace CheckerOnlyFans
             {
 
                 Config config = new Config();
-                Console.WriteLine(config.ApiKey);
-                //Checker checker = new Checker();
-                //List<(string,string)> data = new List<(string,string)> ();
 
-                //if (File.Exists("unchecked.txt"))
-                //{
-                //    foreach (var line in File.ReadAllLines("unchecked.txt"))
-                //    {
-                //        if (line.Contains(':'))
-                //        {
-                //            var acc = line.Split(':');
-                //            data.Add((acc.FirstOrDefault(), acc.LastOrDefault()));
-                //        }
-                //    }
-                //    Console.WriteLine($"Загружено валидных строк: {data.Count}");
-                //}
-                //else
-                //{
-                //    Console.WriteLine("Файл unchecked.txt не найден.");
-                //}
+                Checker checker = new Checker(config.ApiKey);
+                List<(string, string)> data = new List<(string, string)>();
 
-                //List<Task<string>> tasks = new List<Task<string>>();
+                if (File.Exists("unchecked.txt"))
+                {
+                    foreach (var line in File.ReadAllLines("unchecked.txt"))
+                    {
+                        if (line.Contains(':'))
+                        {
+                            var acc = line.Split(':');
+                            data.Add((acc.FirstOrDefault(), acc.LastOrDefault()));
+                        }
+                    }
+                    Console.WriteLine($"Загружено валидных строк: {data.Count}");
+                }
+                else
+                {
+                    Console.WriteLine("Файл unchecked.txt не найден.");
+                }
 
-                //foreach (var item in data)
-                //{
-                //    Console.WriteLine($"В очередь добален: {item.Item1}:{item.Item2}");
-                //    Task<string> temp = Task.Run(async () => {
+                List<Task<string>> tasks = new List<Task<string>>();
 
-                //        sem.WaitOne();
-                //        var result = await checker.Check(item.Item1, item.Item2);
-                //        sem.Release();
-                //        return result; 
+                foreach (var item in data)
+                {
+                    Console.WriteLine($"В очередь добален: {item.Item1}:{item.Item2}");
+                    Task<string> temp = Task.Run(async () =>
+                    {
 
-                //    });
-                //    tasks.Add(temp);
-                //}
+                        sem.WaitOne();
+                        var result = await checker.Check(item.Item1, item.Item2);
+                        sem.Release();
+                        return result;
+
+                    });
+                    tasks.Add(temp);
+                }
 
 
-                //Task.WaitAll(tasks.ToArray());
+                Task.WaitAll(tasks.ToArray());
 
-                //File.WriteAllText("qwe.txt", JsonConvert.SerializeObject(new { rucaptchaApiKey = "qwe" }));
-                
+                File.WriteAllText("qwe.txt", JsonConvert.SerializeObject(new { rucaptchaApiKey = "qwe" }));
+
             }
 
             static Semaphore sem = new Semaphore(3, 3);
