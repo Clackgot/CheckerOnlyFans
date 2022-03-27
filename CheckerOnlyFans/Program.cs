@@ -188,6 +188,8 @@ namespace CheckerOnlyFans
                             return CheckResult.NeedRefreshPage;
                         case "Email is not valid":
                             return CheckResult.InvalidEmail;
+                        case "Captcha wrong":
+                            return CheckResult.WrongCaptcha;
                         default:
                             return CheckResult.Error;
                     }
@@ -260,14 +262,31 @@ namespace CheckerOnlyFans
                 Console.Clear();
                 Console.WriteLine("Количество потоков(1-3):");
 
-            } while(!int.TryParse(Console.ReadLine(), out threadCount) || threadCount < 1 || threadCount > 3);
-            
+            } while (!int.TryParse(Console.ReadLine(), out threadCount) || threadCount < 1 || threadCount > 3);
+
 
             Run(threadCount);
+
         }
 
         private static void Run(int threadCount)
         {
+            string resultDirName = $"result{Guid.NewGuid().ToString()}]";
+            if(!Directory.Exists(resultDirName))
+            {
+                Directory.CreateDirectory(resultDirName);
+            }
+            string uncheckedFileName = "unchecked.txt";
+
+            string invalidFileName = "invalid.txt";
+            string invalidFilePath = $"{resultDirName}\\{invalidFileName}";
+
+            string validFileName = "valid.txt";
+            string validFilePath = $"{resultDirName}\\{validFileName}";
+
+            string errorFileName = "error.txt";
+            string errorFilePath = $"{resultDirName}\\{errorFileName}";
+
             Semaphore sem = new Semaphore(threadCount, threadCount);
             Config config = new Config();
 
@@ -275,9 +294,9 @@ namespace CheckerOnlyFans
             List<(string, string)> data = new List<(string, string)>();
             List<(string, CheckResult)> accounts = new List<(string, CheckResult)>();
 
-            if (File.Exists("unchecked.txt"))
+            if (File.Exists(uncheckedFileName))
             {
-                foreach (var line in File.ReadAllLines("unchecked.txt"))
+                foreach (var line in File.ReadAllLines(uncheckedFileName))
                 {
                     if (line.Contains(':'))
                     {
@@ -289,7 +308,7 @@ namespace CheckerOnlyFans
             }
             else
             {
-                Console.WriteLine("Файл unchecked.txt не найден.");
+                Console.WriteLine($"Файл {uncheckedFileName} не найден.");
             }
 
             List<Task> tasks = new List<Task>();
@@ -306,21 +325,21 @@ namespace CheckerOnlyFans
                     {
                         case CheckResult.Valid:
                             Console.WriteLine($"{item.Item1}:{item.Item2} Валид");
-                            using (StreamWriter writer = new StreamWriter("valid.txt", true))
+                            using (StreamWriter writer = new StreamWriter(validFilePath, true))
                             {
                                 await writer.WriteLineAsync($"{item.Item1}:{item.Item2}");
                             }
                             break;
                         case CheckResult.Invalid:
                             Console.WriteLine($"{item.Item1}:{item.Item2} Невалид");
-                            using (StreamWriter writer = new StreamWriter("invalid.txt", true))
+                            using (StreamWriter writer = new StreamWriter(invalidFilePath, true))
                             {
                                 await writer.WriteLineAsync($"{item.Item1}:{item.Item2}");
                             }
                             break;
                         default:
                             Console.WriteLine($"{item.Item1}:{item.Item2} Ошибка");
-                            using (StreamWriter writer = new StreamWriter("error.txt", true))
+                            using (StreamWriter writer = new StreamWriter(errorFilePath, true))
                             {
                                 await writer.WriteLineAsync($"{item.Item1}:{item.Item2}:{result}");
                             }
